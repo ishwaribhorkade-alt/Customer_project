@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Support Assistant</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="chat-card" aria-label="Customer support chatbot">
+      <header class="chat-header">
+        <div class="bot-avatar" aria-hidden="true">AI</div>
+        <div class="header-copy">
+          <h1>Customer Support Assistant</h1>
+          <p><span class="status-dot"></span> Online assistant</p>
+        </div>
+        <button id="clearChat" class="clear-button" type="button" title="Start a new conversation">New chat</button>
+      </header>
+
+      <div id="chatMessages" class="chat-messages" aria-live="polite">
+        <div class="message bot-message">
+          <div class="message-avatar">AI</div>
+          <div class="bubble">
+            <p>Hi there! How can I help you today?</p>
+            <span class="message-time">Assistant</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="suggestions" id="suggestions">
+        <button type="button" data-message="How can I contact customer support?">Contact support</button>
+        <button type="button" data-message="I need help with a return or refund.">Returns & refunds</button>
+        <button type="button" data-message="What information should I provide when reporting a problem?">Report a problem</button>
+      </div>
+
+      <form id="chatForm" class="chat-form">
+        <label class="sr-only" for="messageInput">Type your message</label>
+        <textarea id="messageInput" rows="1" placeholder="Type your message..." maxlength="2000" required></textarea>
+        <button id="sendButton" type="submit" aria-label="Send message">
+          <span>Send</span>
+          <span aria-hidden="true">➤</span>
+        </button>
+      </form>
+      <p class="disclaimer">AI-generated responses may be inaccurate. Do not share passwords or sensitive personal information.</p>
+    </section>
+  </main>
+
+  <script>
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("messageInput");
+    const chatMessages = document.getElementById("chatMessages");
+    const sendButton = document.getElementById("sendButton");
+    const clearChat = document.getElementById("clearChat");
+    const suggestions = document.getElementById("suggestions");
+
+    function addMessage(text, sender) {
+      const row = document.createElement("div");
+      row.className = `message ${sender === "user" ? "user-message" : "bot-message"}`;
+
+      if (sender !== "user") {
+        const avatar = document.createElement("div");
+        avatar.className = "message-avatar";
+        avatar.textContent = "AI";
+        row.appendChild(avatar);
+      }
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      const paragraph = document.createElement("p");
+      paragraph.textContent = text; // Use textContent to avoid inserting HTML from user/AI text.
+      bubble.appendChild(paragraph);
+
+      const time = document.createElement("span");
+      time.className = "message-time";
+      time.textContent = sender === "user" ? "You" : "Assistant";
+      bubble.appendChild(time);
+      row.appendChild(bubble);
+      chatMessages.appendChild(row);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return row;
+    }
+
+    function showTyping() {
+      const row = document.createElement("div");
+      row.className = "message bot-message typing-row";
+      row.innerHTML = '<div class="message-avatar">AI</div><div class="bubble typing"><span></span><span></span><span></span></div>';
+      chatMessages.appendChild(row);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return row;
+    }
+
+    async function sendMessage(text) {
+      const message = text.trim();
+      if (!message) return;
+
+      addMessage(message, "user");
+      messageInput.value = "";
+      messageInput.style.height = "auto";
+      sendButton.disabled = true;
+      suggestions.hidden = true;
+      const typingRow = showTyping();
+
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+        const result = await response.json();
+        typingRow.remove();
+        addMessage(result.reply || "Sorry, something went wrong.", "bot");
+      } catch (error) {
+        typingRow.remove();
+        addMessage("Unable to reach the server. Please check that the Python app is running and try again.", "bot");
+      } finally {
+        sendButton.disabled = false;
+        messageInput.focus();
+      }
+    }
+
+    chatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendMessage(messageInput.value);
+    });
+
+    messageInput.addEventListener("input", () => {
+      messageInput.style.height = "auto";
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
+    });
+
+    messageInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+      }
+    });
+
+    document.querySelectorAll(".suggestions button").forEach((button) => {
+      button.addEventListener("click", () => sendMessage(button.dataset.message));
+    });
+
+    clearChat.addEventListener("click", async () => {
+      try {
+        await fetch("/reset", { method: "POST" });
+      } catch (error) {
+        // The UI is still reset locally; the server session will reset on refresh if needed.
+      }
+      chatMessages.innerHTML = "";
+      addMessage("Hi there! How can I help you today?", "bot");
+      suggestions.hidden = false;
+      messageInput.focus();
+    });
+  </script>
+</body>
+</html>
